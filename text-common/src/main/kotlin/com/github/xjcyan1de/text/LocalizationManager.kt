@@ -2,17 +2,37 @@ package com.github.xjcyan1de.text
 
 import java.io.Closeable
 import java.util.*
+import kotlin.collections.ArrayList
 import kotlin.collections.HashMap
 
 object LocalizationManager : Closeable {
-    private val dictionary: HashMap<Locale, HashMap<String, String>> = HashMap()
-    private val localeProviders: HashMap<Class<*>, LocaleProvider<*>> = HashMap()
+    private val dictionary = HashMap<Locale, HashMap<String, String>>()
+    private val dictionaryProviders = HashMap<Locale, MutableList<DictionaryProvider>>()
+    private val localeProviders = HashMap<Class<*>, LocaleProvider<*>>()
 
     fun translate(string: String, locale: Locale) =
-            dictionary.getOrPut(locale) { HashMap() }[string]
+            dictionary.getOrPut(locale) { HashMap() }[string] ?: dictionaryProviders[locale]?.let {
+                var result: String? = null
+                for (provider in it) {
+                    val value = provider[string]
+                    if (value != null) {
+                        result = value
+                        break
+                    }
+                }
+                result
+            }
 
     fun addDictionary(locale: Locale, map: Map<String, String>) =
             dictionary.getOrPut(locale) { HashMap() }.putAll(map)
+
+    fun registerDictionary(locale: Locale, provider: DictionaryProvider) =
+            dictionaryProviders.getOrPut(locale) { ArrayList() }.add(provider)
+
+    fun registerDictionary(locale: Locale, provider: (String) -> String?) =
+            registerDictionary(locale, object : DictionaryProvider {
+                override fun get(key: String): String? = provider(key)
+            })
 
     @Suppress("UNCHECKED_CAST")
     fun <T> getLocale(clazz: Class<T>, value: T): Locale? = (localeProviders[clazz] as? LocaleProvider<T>)?.get(value)
